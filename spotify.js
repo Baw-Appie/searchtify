@@ -105,10 +105,27 @@ class Spotify {
         this.clientToken = response.data.granted_token;
     }
 
-    async search(query, opts = {}) {
+    async getHeaders() {
         if (!this.accessToken) await this.getAccessToken();
         if (!this.clientToken) await this.getClientToken();
 
+        return {
+            'Accept': 'application/json',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+            'Accept-Language': 'en',
+            'App-Platform': 'WebPlayer',
+            'Authorization': `Bearer ${this.accessToken.accessToken}`,
+            'Cache-Control': 'no-cache',
+            'Client-Token': this.clientToken.token,
+            'Content-Type': 'application/json;charset=UTF-8',
+            'Origin': 'https://open.spotify.com',
+            'Referer': 'https://open.spotify.com/',
+            'Spotify-App-Version': this.variables.clientVersion,
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
+        }
+    }
+
+    async search(query, opts = {}) {
         const url = new URL('https://api-partner.spotify.com/pathfinder/v1/query');
 
         url.searchParams.append('operationName', 'searchDesktop');
@@ -136,24 +153,78 @@ class Spotify {
         }));
 
         let response = await axios.get(url.toString(), {
-            headers: {
-                'Accept': 'application/json',
-                'Accept-Encoding': 'gzip, deflate, br, zstd',
-                'Accept-Language': 'en',
-                'App-Platform': 'WebPlayer',
-                'Authorization': `Bearer ${this.accessToken.accessToken}`,
-                'Cache-Control': 'no-cache',
-                'Client-Token': this.clientToken.token,
-                'Content-Type': 'application/json;charset=UTF-8',
-                'Origin': 'https://open.spotify.com',
-                'Referer': 'https://open.spotify.com/',
-                'Spotify-App-Version': this.variables.clientVersion,
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
-            },
-            validateStatus: () => true,
+            headers: await this.getHeaders(),
+            validateStatus: () => true
         });
 
         return response.data.data.searchV2;
+    }
+
+    async getPopular(timezone = Intl.DateTimeFormat().resolvedOptions().timeZone) {
+        let response = await axios.post('https://api-partner.spotify.com/pathfinder/v2/query', {
+            operationName: 'home',
+            variables: {
+                timeZone: timezone,
+                sp_t: this.deviceId,
+                facet: '',
+                sectionItemsLimit: 10
+            },
+            extensions: {
+                persistedQuery: {
+                    version: 1,
+                    sha256Hash: '72325e84c876c72564fb9ab012f602be8ef6a1fdd3039be2f8b4f2be4c229a30'
+                }
+            }
+        }, {
+            headers: await this.getHeaders(),
+            validateStatus: () => true
+        });
+
+        return response.data.data.home.sectionContainer.sections.items;
+    }
+
+    async getAlbum(uri) {
+        let response = await axios.post('https://api-partner.spotify.com/pathfinder/v2/query', {
+            operationName: 'getAlbum',
+            variables: {
+                uri: uri,
+                locale: '',
+                offset: 0,
+                limit: 50
+            },
+            extensions: {
+                persistedQuery: {
+                    version: 1,
+                    sha256Hash: '97dd13a1f28c80d66115a13697a7ffd94fe3bebdb94da42159456e1d82bfee76'
+                }
+            }
+        }, {
+            headers: await this.getHeaders(),
+            validateStatus: () => true
+        });
+
+        return response.data.data.albumUnion;
+    }
+
+    async getArtist(uri) {
+        let response = await axios.post('https://api-partner.spotify.com/pathfinder/v2/query', {
+            operationName: 'queryArtistOverview',
+            variables: {
+                uri: uri,
+                locale: ''
+            },
+            extensions: {
+                persistedQuery: {
+                    version: 1,
+                    sha256Hash: '1ac33ddab5d39a3a9c27802774e6d78b9405cc188c6f75aed007df2a32737c72'
+                }
+            }
+        }, {
+            headers: await this.getHeaders(),
+            validateStatus: () => true
+        });
+
+        return response.data.data.artistUnion;
     }
 }
 
