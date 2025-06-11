@@ -99,5 +99,7 @@ the structure of the response is the homepage categories and data going down.
 
 it defaults to the user's timezone.
 
+you can also specify a custom useragent for requests as the first string to the `Spotify` class constructor.
+
 <br><br>
 <h5 align='center'>made with ❤️</h5>

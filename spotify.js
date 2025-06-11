@@ -2,6 +2,10 @@ import axios from 'axios';
 import * as OTPAuth from 'otpauth';
 
 class Spotify {
+    constructor(customUserAgent = '') {
+        this.customUserAgent = customUserAgent;
+    }
+
     async getVariables() {
         const mainPage = await axios.get('https://open.spotify.com');
         this.deviceId = mainPage.headers['set-cookie'].find(h => h.startsWith('sp_t=')).split(';')[0].split('=')[1];
@@ -13,14 +17,11 @@ class Spotify {
             buildVer: scriptContent.data.match(/buildVer:"(.*?)"/)[1],
             buildDate: scriptContent.data.match(/buildDate:"(.*?)"/)[1],
             clientID: scriptContent.data.match(/clientID:"(.*?)"/)[1],
-            clientVersion: scriptContent.data.match(/clientVersion:"(.*?)"/)[1]
+            clientVersion: scriptContent.data.match(/clientVersion:"(.*?)"/)[1],
+            serverTime: mainPage.headers['x-timer'].match(/S([0-9]+)\./)[1]
         };
 
         return this.variables;
-    }
-
-    async getServerTime() {
-        return (await axios.get('https://open.spotify.com/server-time')).data.serverTime;
     }
 
     generateTOTP() {
@@ -43,7 +44,7 @@ class Spotify {
     async getAccessToken() {
         if (!this.variables) await this.getVariables();
 
-        const urlBase = new URL('https://open.spotify.com/get_access_token');
+        const urlBase = new URL('https://open.spotify.com/api/token');
         const params = new URLSearchParams();
         const totp = this.generateTOTP();
 
@@ -52,7 +53,7 @@ class Spotify {
         params.append('totp', totp);
         params.append('totpServer', totp);
         params.append('totpVer', '5');
-        params.append('sTime', await this.getServerTime());
+        params.append('sTime', this.variables.serverTime);
         params.append('cTime', Date.now().toString());
         params.append('buildVer', this.variables.buildVer);
         params.append('buildDate', this.variables.buildDate);
@@ -121,14 +122,16 @@ class Spotify {
             'Origin': 'https://open.spotify.com',
             'Referer': 'https://open.spotify.com/',
             'Spotify-App-Version': this.variables.clientVersion,
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
+            'User-Agent': this.customUserAgent || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
         }
     }
 
     async search(query, opts = {}) {
-        const url = new URL('https://api-partner.spotify.com/pathfinder/v1/query');
+        const url = new URL('https://api-partner.spotify.com/pathfinder/v2/query');
 
-        url.searchParams.append('operationName', 'searchDesktop');
+        const payload = {};
+
+        payload.operationName = 'searchDesktop';
 
         const variables = opts;
 
@@ -143,17 +146,22 @@ class Spotify {
         if (!variables.includeLocalConcertsField) variables.includeLocalConcertsField = false;
         if (!variables.includeAuthors) variables.includeAuthors = false;
 
-        url.searchParams.append('variables', JSON.stringify(variables));
+        payload.variables = variables;
 
-        url.searchParams.append('extensions', JSON.stringify({
+        payload.extensions = {
             persistedQuery: {
                 version: 1,
                 sha256Hash: 'd9f785900f0710b31c07818d617f4f7600c1e21217e80f5b043d1e78d74e6026'
             }
-        }));
+        };
 
-        let response = await axios.get(url.toString(), {
-            headers: await this.getHeaders(),
+        const headers = {
+            ...(await this.getHeaders()),
+            'Content-Length': JSON.stringify(payload).length.toString()
+        }
+
+        let response = await axios.post(url.toString(), payload, {
+            headers,
             validateStatus: () => true
         });
 
